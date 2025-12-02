@@ -1,24 +1,15 @@
-FROM python:3.12-slim AS base
+FROM python:3.13-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_ROOT_USER_ACTION=ignore
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
 
-# System deps required by pandas/numpy/matplotlib stack when wheels are missing
+# System deps required by pandas/numpy/plotly stack
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    libatlas-base-dev \
-    libblas-dev \
-    gfortran \
-    libfreetype6-dev \
-    libjpeg-dev \
-    libpng-dev \
-    pkg-config && \
+    apt-get install -y --no-install-recommends build-essential && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
