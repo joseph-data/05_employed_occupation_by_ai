@@ -4,7 +4,8 @@ from pathlib import Path
 
 
 # Optional: project root if you need it elsewhere
-ROOT = Path.cwd().resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
+
 
 TAX_ID = "ssyk2012"
 
