@@ -1,5 +1,5 @@
 ---
-title: DAIOE Explorer
+title: Number of Employed Persons by Occupation
 emoji: 🌍
 colorFrom: yellow
 colorTo: indigo
