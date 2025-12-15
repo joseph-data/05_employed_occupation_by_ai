@@ -13,6 +13,7 @@ from src.config import (
     LEVEL_OPTIONS,
     GLOBAL_YEAR_MIN,
     GLOBAL_YEAR_MAX,
+    AGE_ORDER,
 )
 
 from src.data_manager import load_payload
@@ -217,42 +218,57 @@ with ui.div(style="display:flex; justify-content:center;"):
     def employment_plot2():
         df = filtered_data()
 
-        age_groups = sorted(df["age"].dropna().unique())
+        def _placeholder(msg: str) -> go.Figure:
+            fig = make_subplots(rows=1, cols=1)
+            fig.add_annotation(
+                text=msg,
+                xref="paper",
+                yref="paper",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=16),
+            )
+            fig.update_xaxes(visible=False)
+            fig.update_yaxes(visible=False)
+            fig.update_layout(
+                height=700, width=1200, margin=dict(t=80), showlegend=False
+            )
+            return fig
+
+        if df.empty:
+            return _placeholder("Select an occupation to load the chart.")
+
+        # Order ages by AGE_ORDER, append any extras alphabetically
+        unique_ages = [a for a in df["age"].dropna().unique() if a]
+        age_set = set(unique_ages)
+        age_groups = [age for age in AGE_ORDER if age in age_set]
+        age_groups.extend(sorted(age_set - set(AGE_ORDER)))
+
+        if not age_groups:
+            return _placeholder("No age data available for this selection.")
+
+        n_rows = len(age_groups)
+        subplot_titles = [
+            f"<b>Employed Persons Aged {age} Years by Occupation" for age in age_groups
+        ]
 
         occupations = sorted(df["label"].dropna().unique())
-        # Use a Plotly qualitative palette
         palette = px.colors.qualitative.Plotly
-        # Cycle safely if occupations > palette length
         occ_color_map = {
             occ: palette[i % len(palette)] for i, occ in enumerate(occupations)
         }
 
-        # ------------------------------------------------------------------
-        # 2. Create multi-row subplot scaffolding
-        # ------------------------------------------------------------------
-        subplot_titles = [
-            (f"<b>Employed Persons Aged {age} Years by Occupation")
-            for age in age_groups
-        ]
-
         fig = make_subplots(
-            rows=len(age_groups),
+            rows=n_rows,
             cols=1,
             shared_xaxes=False,
             vertical_spacing=0.03,
             subplot_titles=subplot_titles,
         )
 
-        # ------------------------------------------------------------------
-        # 3. Add traces per age group and exposure level
-        # ------------------------------------------------------------------
-
-        # Need to pre-define the max row number for the final x-axis update
-
         for i, age in enumerate(age_groups, start=1):
             df_age = df[df["age"] == age]
-
-            # Aggregate by Year and Label
             df_plot = df_age.groupby(["year", "label"], as_index=False)[
                 "employment"
             ].sum()
@@ -263,19 +279,15 @@ with ui.div(style="display:flex; justify-content:center;"):
                         x=sub["year"],
                         y=sub["employment"],
                         mode="lines+markers",
-                        showlegend=True
-                        if i == 1
-                        else False,  # Show legend only in the first subplot
+                        showlegend=(i == 1),
                         name=occ_title,
                         line=dict(color=occ_color_map[occ_title], width=3),
-                        # Add group/age info to the hover template for debugging/clarity
                         hovertemplate=f"Age: {age}<br>Year: %{{x}}<br>Employment: %{{y:,}}<extra>{occ_title}</extra>",
                     ),
                     row=i,
                     col=1,
                 )
 
-            # Y-axis update must be inside the loop to target the current row (i)
             fig.update_yaxes(
                 title_text="Number of Employed Persons",
                 tickformat=",",
@@ -283,22 +295,13 @@ with ui.div(style="display:flex; justify-content:center;"):
                 row=i,
                 col=1,
             )
-
-            # X-axis update must be inside the loop to target the current row (i)
             fig.update_xaxes(
-                title_text="Year",
-                tickmode="linear",
-                dtick=1,
-                row=i,
-                col=1,
+                title_text="Year", tickmode="linear", dtick=1, row=i, col=1
             )
 
-        # ------------------------------------------------------------------
-        # 4. Global layout tweaks
-        # ------------------------------------------------------------------
         fig.update_annotations(yshift=30)
         fig.update_layout(
-            height=700 * len(age_groups),
+            height=700 * n_rows,
             width=1200,
             legend_traceorder="normal",
             legend=dict(
@@ -317,5 +320,4 @@ with ui.div(style="display:flex; justify-content:center;"):
             plot_bgcolor="#f5f7fb",
             xaxis_showgrid=True,
         )
-
         return fig
