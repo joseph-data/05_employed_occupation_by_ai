@@ -130,10 +130,10 @@ def _sync_selectize_choices():
     # only keep items still valid
     valid_selected = [s for s in current if s in choices]
 
-    # apply a default when nothing valid remains
-    if not valid_selected and choices:
-        # pick the first option (or slice for multiple defaults)
-        valid_selected = [next(iter(choices))]
+    # # apply a default when nothing valid remains
+    # if not valid_selected and choices:
+    #     # pick the first option (or slice for multiple defaults)
+    #     valid_selected = [next(iter(choices))]
 
     ui.update_selectize("selectize", choices=choices, selected=valid_selected)
 
@@ -310,7 +310,7 @@ with ui.div(style="display:flex; justify-content:center;"):
                 yanchor="top",
                 y=1.0,
                 xanchor="left",
-                x=-0.5,
+                x=-0.7,
                 bordercolor="#c7c7c7",
                 borderwidth=2,
                 bgcolor="#f9f9f9",
