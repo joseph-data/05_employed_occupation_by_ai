@@ -1,207 +1,321 @@
-"""
-Shiny app: Employment headcount by age group for a selected SSYK3 occupation,
-indexed to 2022 = 1. Uses SCB AKU employment pulled via scripts/04_occ.py.
-"""
-
-from __future__ import annotations
-
-from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List
 
-import matplotlib.pyplot as plt
-import pandas as pd
-from shiny import App, render, ui
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
-ROOT = Path(__file__).resolve().parent
-OCC_PATH = ROOT / "scripts" / "04_occ.py"
+from shiny import reactive
+from shiny.express import input, ui
+from shinywidgets import render_plotly, output_widget
+from src.config import (
+    DEFAULT_LEVEL,
+    DEFAULT_YEAR_RANGE,
+    LEVEL_OPTIONS,
+    GLOBAL_YEAR_MIN,
+    GLOBAL_YEAR_MAX,
+)
 
-# Age groups available from SCB; keep order consistent for the UI and legend.
-AGE_ORDER: List[str] = [
-    "16-24",
-    "25-29",
-    "30-34",
-    "35-39",
-    "40-44",
-    "45-49",
-    "50-54",
-    "55-59",
-    "60-64",
-]
-AGE_LABELS: Dict[str, str] = {age: f"{age} years" for age in AGE_ORDER}
+from src.data_manager import load_payload
 
 
-def _load_occ_module():
-    """Load the employment fetcher from scripts/04_occ.py."""
-    import importlib.util
+# Helpers for UI mapping
+LEVEL_CHOICES = {value: label for label, value in LEVEL_OPTIONS}
+YEAR_RANGE_DEFAULT = list(range(DEFAULT_YEAR_RANGE[0], DEFAULT_YEAR_RANGE[1] + 1))
 
-    spec = importlib.util.spec_from_file_location("scripts.occ", OCC_PATH)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+# ======================================================
+#  UI LAYOUT
+# ======================================================
+css_file = Path(__file__).parent / "css" / "theme.css"
 
+ui.include_css(css_file)
 
-@lru_cache(maxsize=1)
-def load_employment() -> pd.DataFrame:
-    """Fetch SCB AKU employment by occupation, age, and year."""
-    occ_mod = _load_occ_module()
-    df = occ_mod.fetch_scb_aku_occupations()
-    df = df.rename(columns={"code_3": "code"})
-    df["code"] = df["code"].astype(str).str.zfill(3)
-    df["year"] = df["year"].astype(int)
-    df["value"] = df["value"].astype(int)
-    df = df[df["age"].isin(AGE_ORDER)].copy()
-    return df
-
-
-@lru_cache(maxsize=1)
-def profession_choices() -> Dict[str, str]:
-    """
-    Build a mapping of SSYK3 codes to display labels.
-    Uses the most frequent occupation label observed for each code.
-    """
-    df = load_employment()
-    df = df[df["code"].str.len() == 3].copy()
-    df = df.dropna(subset=["occupation"])
-
-    def pick_label(group: pd.Series) -> str:
-        return group.mode().iat[0] if not group.mode().empty else group.iloc[0]
-
-    labels = (
-        df.groupby("code")["occupation"]
-        .apply(pick_label)
-        .reset_index()
-        .sort_values("code")
-    )
-    return {row.code: f"{row.code} - {row.occupation}" for row in labels.itertuples()}
-
-
-@lru_cache(maxsize=1)
-def available_years() -> List[int]:
-    """Years present in the employment series, sorted ascending."""
-    df = load_employment()
-    return sorted(df["year"].unique().tolist())
-
-
-def build_headcount(code: str, ages: List[str], base_year: int | None) -> pd.DataFrame:
-    """
-    Filter employment to a single SSYK3 code and selected age groups.
-    Optionally index each age group to the selected base year.
-    """
-    emp = load_employment()
-    filtered = emp[(emp["code"] == code) & (emp["age"].isin(ages))].copy()
-    if filtered.empty:
-        return filtered
-
-    if base_year is not None:
-        base = (
-            filtered[filtered["year"] == base_year][["age", "value"]]
-            .rename(columns={"value": "base_value"})
-            .set_index("age")
-        )
-        filtered["base_value"] = filtered["age"].map(base["base_value"])
-        filtered = filtered[filtered["base_value"].notna()].copy()
-        if filtered.empty:
-            return filtered
-        filtered["metric"] = filtered["value"] / filtered["base_value"]
-    else:
-        filtered["metric"] = filtered["value"]
-
-    filtered["age_label"] = filtered["age"].map(AGE_LABELS)
-    filtered = filtered.sort_values(["age", "year"])
-    return filtered
-
-
-def make_headcount_plot(df: pd.DataFrame, title: str, base_year: int | None):
-    """Create a line plot of headcount by age group for one occupation."""
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    palette = [
-        "#0072B2",
-        "#009E73",
-        "#E69F00",
-        "#D55E00",
-        "#CC79A7",
-        "#56B4E9",
-        "#999999",
-        "#F0E442",
-        "#8C564B",
-    ]
-
-    for idx, (age, group) in enumerate(df.groupby("age_label")):
-        ax.plot(group["year"], group["metric"], label=age, color=palette[idx % len(palette)], linewidth=2)
-
-    if base_year is not None:
-        ax.axvline(base_year, color="#555555", linestyle="--", linewidth=1, alpha=0.7)
-    ax.set_xlabel("Year")
-    ylabel = f"Normalized headcount (base={base_year})" if base_year is not None else "Headcount"
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"Headcount over time by age group\n{title}")
-    ax.legend(title="Age group", loc="upper left")
-    ax.grid(True, linestyle="--", alpha=0.2)
-    fig.tight_layout()
-    return fig
-
-
-profession_map = profession_choices()
-default_code = next(iter(profession_map.keys()), "")
-
-app_ui = ui.page_fluid(
-    ui.h2("Headcount over time by age group"),
-    ui.input_select(
-        "profession",
-        "SSYK 3-digit occupation",
-        choices=profession_map,
-        selected=default_code,
-    ),
-    ui.input_select(
-        "base_year",
-        "Base year (optional)",
-        choices={"": "No indexing (show raw values)", **{str(y): str(y) for y in available_years()}},
-        selected="",
-    ),
-    ui.input_checkbox_group(
-        "age_groups",
-        "Age groups",
-        choices={age: AGE_LABELS[age] for age in AGE_ORDER},
-        selected=AGE_ORDER,
-        inline=True,
-    ),
-    ui.output_plot("headcount_plot", width="100%", height="650px"),
-    ui.markdown(
-        "Data: SCB AKU employment. Select a base year to normalize, or leave blank to see raw headcount."
-    ),
+ui.page_opts(
+    fillable=False,
+    fillable_mobile=True,
+    full_width=True,
+    id="page",
+    lang="en",
 )
 
 
-def server(input, output, session):
-    @render.plot
-    def headcount_plot():
-        code = input.profession()
-        ages = input.age_groups()
-        base_year_raw = input.base_year()
-        base_year = int(base_year_raw) if base_year_raw else None
-        if not code or not ages:
-            fig, ax = plt.subplots(figsize=(8, 3))
-            ax.text(0.5, 0.5, "Select an occupation and at least one age group.", ha="center", va="center")
-            ax.axis("off")
-            return fig
+with ui.sidebar(open="desktop", position="right"):
+    ui.input_select(
+        "level", "Select Occupation level", LEVEL_CHOICES, selected=DEFAULT_LEVEL
+    )
+    ui.input_selectize(
+        "selectize",
+        "Select Occupation title(s)",
+        {},
+        multiple=True,
+        options=(
+            {
+                "placeholder": "Statisticians...",
+                "create": False,
+                "plugins": ["clear_button"],
+            }
+        ),
+    )
+    # ui.input_radio_buttons(
+    #     "count_mode",
+    #     "Employed persons display",
+    #     {"raw": "Raw counts", "index": "Index to base year"},
+    #     selected="raw",
+    # )
+    # with ui.panel_conditional("input.count_mode == 'index'"):
+    #     ui.input_select(
+    #         "base_year",
+    #         "Base year",
+    #         YEAR_RANGE_DEFAULT,
+    #         selected=2022,
+    #     )
 
-        df = build_headcount(code, ages, base_year)
-        if df.empty:
-            fig, ax = plt.subplots(figsize=(8, 3))
-            ax.text(0.5, 0.5, "No data available for this selection.", ha="center", va="center")
-            ax.axis("off")
-            return fig
-
-        title = profession_map.get(code, code)
-        return make_headcount_plot(df, title, base_year)
-
-
-app = App(app_ui, server)
+    ui.input_slider(
+        "year_range",
+        "Year range",
+        min=GLOBAL_YEAR_MIN,
+        max=GLOBAL_YEAR_MAX,
+        value=DEFAULT_YEAR_RANGE,
+        step=1,
+        sep="",
+    )
+    ui.input_action_button("refresh_data", "Refresh data", class_="btn-primary")
 
 
-if __name__ == "__main__":
-    # Run with: shiny run --reload app_headcount_age.py
-    app.run()
+# ======================================================
+#  REACTIVE STATE
+# ======================================================
+
+# Reactive value to store the loaded payload
+payload_store = reactive.Value(load_payload())
+
+
+@reactive.effect
+@reactive.event(input.refresh_data)
+def _refresh_payload():
+    with ui.Progress() as progress:
+        progress.set(message="Refreshing data...", value=0.1)
+        # Force recompute in data manager
+        updated = load_payload(force_recompute=True)
+        progress.set(message="Updating UI...", value=0.8)
+        payload_store.set(updated)
+        progress.set(message="Done", value=1.0)
+
+
+# Build Selectize choices per selected level
+@reactive.calc
+def level_label_choices():
+    df = payload_store()
+    lvl = int(input.level())
+    subset = df[df["level"] == lvl][["code", "label"]].dropna().drop_duplicates()
+    choices_list = []
+    for _, row in subset.iterrows():
+        key = row["label"]
+        value = f"{row['code']} - {row['label']}"
+        choices_list.append((key, value))
+
+    # Sort by the code (extract code from display value)
+    choices_list.sort(key=lambda x: x[1].split(" - ")[0])
+
+    # Convert to dictionary while maintaining order
+    return {key: value for key, value in choices_list}
+
+
+# keep selectize choices in sync with level selection
+@reactive.effect
+def _sync_selectize_choices():
+    choices = level_label_choices()
+    current = input.selectize() or []
+
+    # only keep items still valid
+    valid_selected = [s for s in current if s in choices]
+
+    # apply a default when nothing valid remains
+    if not valid_selected and choices:
+        # pick the first option (or slice for multiple defaults)
+        valid_selected = [next(iter(choices))]
+
+    ui.update_selectize("selectize", choices=choices, selected=valid_selected)
+
+
+# Filtered data based on UI inputs
+@reactive.calc
+def filtered_data():
+    df = payload_store()
+    level = int(input.level())
+    year_min, year_max = input.year_range()
+    selected_titles = input.selectize()
+
+    idx_level = df["level"] == level
+    idx_year = df["year"].between(year_min, year_max)
+
+    # If no titles selected, return empty dataframe
+    if not selected_titles:
+        return df[idx_level & idx_year & (df["label"] == "")].copy()  # Empty result
+
+    idx_title = df["label"].isin(selected_titles)
+    filtered_df = df[idx_level & idx_year & idx_title]
+
+    return filtered_df
+
+
+# # Warning message for no selections
+# with ui.div(style="margin: 20px;"):
+
+#     @render.ui
+#     def selection_status():
+#         if not input.selectize():
+#             return ui.div(
+#                 ui.tags.div(
+#                     "⚠️ Please select at least one occupation title to view data.",
+#                     style="background-color: #fff3cd; color: #856404; padding: 15px; border: 1px solid #ffeaa7; border-radius: 5px; text-align: center; font-weight: bold;",
+#                 )
+#             )
+#         else:
+#             return ui.div()  # Return empty div when selections exist
+
+
+# @render_plotly
+# def data_table():
+#     df = filtered_data()
+
+#     # Show message if no data available
+#     if df.empty:
+#         fig = go.Figure()
+#         fig.add_annotation(
+#             text="No data available. Please select occupation titles.",
+#             xref="paper",
+#             yref="paper",
+#             x=0.5,
+#             y=0.5,
+#             showarrow=False,
+#             font=dict(size=16),
+#         )
+#         fig.update_layout(
+#             xaxis=dict(visible=False), yaxis=dict(visible=False), plot_bgcolor="white"
+#         )
+#         return fig
+
+#     fig = go.Figure(
+#         data=go.Table(
+#             header=dict(
+#                 values=list(df.columns), fill_color="paleturquoise", align="left"
+#             ),
+#             cells=dict(
+#                 values=[df[col] for col in df.columns],
+#                 fill_color="lavender",
+#                 align="left",
+#             ),
+#         )
+#     )
+#     return fig
+
+
+with ui.div(style="display:flex; justify-content:center;"):
+    output_widget("employment_plot")
+
+    @render_plotly
+    def employment_plot2():
+        df = filtered_data()
+
+        age_groups = sorted(df["age"].dropna().unique())
+
+        occupations = sorted(df["label"].dropna().unique())
+        # Use a Plotly qualitative palette
+        palette = px.colors.qualitative.Plotly
+        # Cycle safely if occupations > palette length
+        occ_color_map = {
+            occ: palette[i % len(palette)] for i, occ in enumerate(occupations)
+        }
+
+        # ------------------------------------------------------------------
+        # 2. Create multi-row subplot scaffolding
+        # ------------------------------------------------------------------
+        subplot_titles = [
+            (f"<b>Employed Persons Aged {age} Years by Occupation")
+            for age in age_groups
+        ]
+
+        fig = make_subplots(
+            rows=len(age_groups),
+            cols=1,
+            shared_xaxes=False,
+            vertical_spacing=0.03,
+            subplot_titles=subplot_titles,
+        )
+
+        # ------------------------------------------------------------------
+        # 3. Add traces per age group and exposure level
+        # ------------------------------------------------------------------
+
+        # Need to pre-define the max row number for the final x-axis update
+
+        for i, age in enumerate(age_groups, start=1):
+            df_age = df[df["age"] == age]
+
+            # Aggregate by Year and Label
+            df_plot = df_age.groupby(["year", "label"], as_index=False)[
+                "employment"
+            ].sum()
+
+            for occ_title, sub in df_plot.groupby("label"):
+                fig.add_trace(
+                    go.Scatter(
+                        x=sub["year"],
+                        y=sub["employment"],
+                        mode="lines+markers",
+                        showlegend=True
+                        if i == 1
+                        else False,  # Show legend only in the first subplot
+                        name=occ_title,
+                        line=dict(color=occ_color_map[occ_title], width=3),
+                        # Add group/age info to the hover template for debugging/clarity
+                        hovertemplate=f"Age: {age}<br>Year: %{{x}}<br>Employment: %{{y:,}}<extra>{occ_title}</extra>",
+                    ),
+                    row=i,
+                    col=1,
+                )
+
+            # Y-axis update must be inside the loop to target the current row (i)
+            fig.update_yaxes(
+                title_text="Number of Employed Persons",
+                tickformat=",",
+                rangemode="tozero",
+                row=i,
+                col=1,
+            )
+
+            # X-axis update must be inside the loop to target the current row (i)
+            fig.update_xaxes(
+                title_text="Year",
+                tickmode="linear",
+                dtick=1,
+                row=i,
+                col=1,
+            )
+
+        # ------------------------------------------------------------------
+        # 4. Global layout tweaks
+        # ------------------------------------------------------------------
+        fig.update_annotations(yshift=30)
+        fig.update_layout(
+            height=700 * len(age_groups),
+            width=1200,
+            legend_traceorder="normal",
+            legend=dict(
+                title="Occupation Title(s)",
+                orientation="v",
+                yanchor="top",
+                y=1.0,
+                xanchor="left",
+                x=-0.5,
+                bordercolor="#c7c7c7",
+                borderwidth=2,
+                bgcolor="#f9f9f9",
+                font=dict(size=10),
+            ),
+            margin=dict(t=100, l=50, r=80, b=40),
+            plot_bgcolor="#f5f7fb",
+            xaxis_showgrid=True,
+        )
+
+        return fig

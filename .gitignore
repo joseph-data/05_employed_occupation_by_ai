@@ -8,6 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+.ruff_cache
+.vscode
 
 # Project-specific artifacts
 test_notebooks/
@@ -24,3 +26,9 @@ data/04_translation_files/
 scripts/03_translate_ssyk2012.py
 scripts/03_translate_ssyk96.py
 _brand.yml
+data/daioe_simple.csv
+data/daioe_weighted.csv
+
+
+test.py
+test2.py
