@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # A version tag to embed into the cache filenames.  Bump this value
 # whenever the underlying ``pipeline`` logic changes in a way that
-# invalidates existing caches.
+# invalidates existing caches (or when you want to force a fresh recompute).
 CACHE_VERSION: str = "v1"
 
 
@@ -92,26 +92,16 @@ def _atomic_to_csv(df: pd.DataFrame, path: Path) -> None:
 
 @lru_cache(maxsize=1)
 def _compute_pipeline_payload() -> pd.DataFrame:
-    """Runs the SCB-only pipeline calculation."""
+    """Run the SCB-only pipeline calculation (cached in-process)."""
     return pipeline.run_pipeline()
 
 
-def load_payload(force_recompute: bool = False) -> pd.DataFrame:
-    """
-    Load employment data from disk cache if available, otherwise compute and save.
+def load_payload() -> pd.DataFrame:
+    """Load employment data from disk cache if available, otherwise compute and save.
 
-    Parameters
-    ----------
-    force_recompute : bool, optional
-        If ``True``, recompute the pipeline even if cache files exist.
-
-    Returns
-    -------
-    pd.DataFrame
-        The SCB employment data with hierarchy levels, age groups and totals.
+    To force a rebuild, delete the cache file or bump `CACHE_VERSION` and restart.
     """
-    # If a cached payload exists and recomputation is not forced, return it
-    if not force_recompute and SCB_CACHE.exists():
+    if SCB_CACHE.exists():
         logger.info("Loading pipeline output from cache directory %s", DATA_DIR)
         try:
             return pd.read_csv(SCB_CACHE)
@@ -122,10 +112,6 @@ def load_payload(force_recompute: bool = False) -> pd.DataFrame:
                 SCB_CACHE,
                 exc,
             )
-
-    if force_recompute:
-        # Clear the LRU cache before recomputing
-        _compute_pipeline_payload.cache_clear()
 
     logger.info("Computing SCB employment data – this may take a while…")
     payload = _compute_pipeline_payload()

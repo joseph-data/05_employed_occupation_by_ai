@@ -160,7 +160,12 @@ def run_pipeline(
     year_min: Optional[int] = None,
     year_max: Optional[int] = None,
 ) -> pd.DataFrame:
-    """Run the SCB-only pipeline and return aggregated employment data."""
+    """Run the SCB-only pipeline and return aggregated employment data.
+
+    The returned frame is normalized across hierarchy levels with columns:
+    `taxonomy`, `level`, `code`, `label`, `year`, `n_children`, `age`,
+    `employment`, and `employment_total`.
+    """
     logger.info("Starting SCB-only employment pipeline")
     raw = fetch_all_employment_data()
     employment = prepare_employment(raw, year_min=year_min, year_max=year_max)

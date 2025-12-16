@@ -27,6 +27,7 @@ EXCLUDED_CODES: List[str] = ["0002", "0000"]
 # ======================================================
 #  UI DEFAULTS
 # ======================================================
+# Shiny inputs return strings, so level values are stored as strings ("1".."4").
 LEVEL_OPTIONS: List[Tuple[str, str]] = [
     ("Level 4 (4-digit)", "4"),
     ("Level 3 (3-digit)", "3"),
@@ -41,6 +42,7 @@ GLOBAL_YEAR_MAX: int = 2023
 DEFAULT_YEAR_RANGE: Tuple[int, int] = (GLOBAL_YEAR_MIN, GLOBAL_YEAR_MAX)
 
 AGE_ORDER: List[str] = [
+    # Controls the subplot ordering in `plot_helper.employment_multi_plot`.
     "16-24",
     "25-29",
     "30-34",
