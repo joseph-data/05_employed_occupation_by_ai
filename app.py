@@ -261,8 +261,15 @@ with ui.div(style="display:flex; justify-content:center;"):
             return _placeholder("No age data available for this selection.")
 
         n_rows = len(age_groups)
+
         subplot_titles = [
-            f"<b>Employed Persons Aged {age} Years by Occupation" for age in age_groups
+            (
+                f"<b>Employed Persons Aged {age} Years by Occupation</b><br>"
+                f"<span style='font-size:13px; color:#6b7280;'display:inline-block;'>"
+                f"(SSYK 2012, Level {input.level()})"
+                f"</span>"
+            )
+            for age in age_groups
         ]
 
         occupations = sorted(df["label"].dropna().unique())
@@ -310,25 +317,37 @@ with ui.div(style="display:flex; justify-content:center;"):
             fig.update_xaxes(
                 title_text="Year", tickmode="linear", dtick=1, row=i, col=1
             )
+        BASE_PLOT_WIDTH = 1000
+        LEFT_LEGEND_MARGIN = 260
 
-        fig.update_annotations(yshift=30)
+        fig.update_annotations(yshift=36)
         fig.update_layout(
             height=700 * n_rows,
-            width=1200,
+            width=BASE_PLOT_WIDTH + LEFT_LEGEND_MARGIN,
             legend_traceorder="normal",
             legend=dict(
-                title="Occupation Title(s)",
+                title="<b>Occupation Title(s)</b><br>",
                 orientation="v",
+                x=-0.1,  # left edge of plotting area
+                xanchor="right",  # legend sits just outside-left
+                y=0.98,
                 yanchor="top",
-                y=1.0,
-                xanchor="left",
-                x=-0.7,
-                bordercolor="#c7c7c7",
-                borderwidth=2,
-                bgcolor="#f9f9f9",
-                font=dict(size=10),
+                itemsizing="constant",
+                itemwidth=35,  # keeps items compact
+                tracegroupgap=6,
+                bordercolor="rgba(0,0,0,0.15)",
+                borderwidth=1,
+                bgcolor="rgba(255,255,255,0.85)",
+                font=dict(size=12),
+                indentation=10,
+                yref="paper",
             ),
-            margin=dict(t=100, l=50, r=80, b=40),
+            margin=dict(
+                t=170,
+                l=LEFT_LEGEND_MARGIN,
+                r=60,
+                b=60,
+            ),
             plot_bgcolor="#f5f7fb",
             xaxis_showgrid=True,
         )
