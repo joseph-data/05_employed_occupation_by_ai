@@ -99,7 +99,7 @@ def employment_multi_plot(
                     showlegend=(i == 1),
                     name=occ_title,
                     line=dict(color=occ_color_map[occ_title], width=3),
-                    hovertemplate=f"Age: {age}<br>Year: %{{x}}<br>Employment: %{{y:,}}<extra>{occ_title}</extra>",
+                    hovertemplate=f"Age: {age}<br>Year: %{{x}}<br>Count: %{{y:,}}<extra>{occ_title}</extra>",
                 ),
                 row=i,
                 col=1,
