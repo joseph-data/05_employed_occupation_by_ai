@@ -151,8 +151,9 @@ def employment_multi_plot(
             r=60,
             b=60,
         ),
-        plot_bgcolor="#f5f7fb",
         xaxis_showgrid=True,
+        yaxis_showgrid=True,
+        template="plotly_white",
     )
 
     return fig
