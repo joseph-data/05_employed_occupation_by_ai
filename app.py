@@ -8,7 +8,7 @@ from pathlib import Path
 
 from shiny import reactive
 from shiny.express import input, ui
-from shinywidgets import render_plotly, output_widget, render_plotly
+from shinywidgets import output_widget, render_plotly
 from src.config import (
     DEFAULT_LEVEL,
     DEFAULT_YEAR_RANGE,
